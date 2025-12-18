@@ -2,7 +2,9 @@
 # Python / venv
 # =====================
 venv/
+venv/
 .env/
+.env
 __pycache__/
 *.pyc
 *.pyo

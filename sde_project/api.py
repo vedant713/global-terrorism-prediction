@@ -4,6 +4,9 @@ import joblib
 import pandas as pd
 import numpy as np
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = FastAPI(title="Global Terrorism Prediction API")
 
@@ -146,3 +149,51 @@ def get_similar(region: int, attack_type: str):
     
     records = filtered[['iyear', 'latitude', 'longitude', 'city', 'nkill', 'summary']].to_dict(orient='records')
     return {"incidents": records}
+
+@app.post("/genai/advisory")
+def generate_advisory(request: dict):
+    """Generates a safety advisory using Gemini or Mock."""
+    country = request.get("country", "Unknown Country")
+    year = request.get("year", "Unknown Year")
+    summary_text = request.get("summary_text", "")
+
+    api_key = os.getenv("GEMINI_API_KEY")
+    
+    if api_key:
+        try:
+            import google.generativeai as genai
+            genai.configure(api_key=api_key)
+            # User requested specific model
+            model = genai.GenerativeModel('gemini-2.5-flash-lite')
+            
+            prompt = f"""
+            You are a global security analyst. Based on the following recent terrorism incident data in {country} (circa {year}), 
+            provide a concise 3-bullet point travel safety advisory for civilians.
+            
+            Incident Context: "{summary_text}"
+            
+            Format:
+            - Threat Level: [Low/Medium/High]
+            - Key Risk: [One sentence]
+            - Advice: [One sentence]
+            """
+            
+            response = model.generate_content(prompt)
+            return {"advisory": response.text, "source": "Gemini Pro"}
+        except Exception as e:
+            print(f"Gemini Error: {e}")
+            # Fallback to mock on error
+            pass
+
+    # Mock Response (Fail-safe)
+    return {
+        "advisory": f"""
+        **⚠️ Simulated Security Advisory for {country}**
+        (API Key not found or Error. Running in Demo Mode)
+        
+        *   **Threat Level:** High (Simulated)
+        *   **Key Risk:** Potential for {request.get('attack_type', 'violent')} incidents in public areas.
+        *   **Advice:** Avoid large gatherings and monitor local news outlets.
+        """,
+        "source": "Mock (Demo Mode)"
+    }

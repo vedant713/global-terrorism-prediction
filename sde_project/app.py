@@ -87,8 +87,22 @@ with st.sidebar:
 
     predict_btn = st.button("Predict Impact", type="primary")
 
-# Main Content
+# Initialize Session State
+if "show_results" not in st.session_state:
+    st.session_state.show_results = False
+if "prediction_data" not in st.session_state:
+    st.session_state.prediction_data = {}
+if "similar_incidents" not in st.session_state:
+    st.session_state.similar_incidents = []
+if "historical_data" not in st.session_state:
+    st.session_state.historical_data = {}
+if "last_payload" not in st.session_state:
+    st.session_state.last_payload = {}
+
+
+# Main Logic
 if predict_btn:
+    # 1. Prepare Payload
     payload = {
         "iyear": year,
         "imonth": month,
@@ -99,9 +113,10 @@ if predict_btn:
         "targtype1_txt": target_type,
         "weaptype1_txt": weapon_type
     }
+    st.session_state.last_payload = payload
 
     try:
-        # Check API Health
+        # 2. Check API Health
         try:
             health_response = requests.get(f"{API_URL}/health")
             if health_response.status_code != 200:
@@ -111,68 +126,115 @@ if predict_btn:
             st.info("Run: uvicorn sde_project.api:app --reload")
             st.stop()
 
-        # Get Prediction
+        # 3. Get Prediction
         response = requests.post(f"{API_URL}/predict", json=payload)
         
         if response.status_code == 200:
-            result = response.json()
+            st.session_state.prediction_data = response.json()
+            st.session_state.show_results = True
             
-            if result.get("status") == "warning":
-                st.warning(result["message"])
+            # 4. Fetch History
+            hist_res = requests.get(f"{API_URL}/history", params={"country_id": country})
+            if hist_res.status_code == 200:
+                st.session_state.historical_data = hist_res.json()
             else:
-                fatalities = result["predicted_fatalities"]
-                
-                col_res1, col_res2 = st.columns([1, 2])
-                with col_res1:
-                    st.metric(label="Predicted Fatalities", value=f"{fatalities}")
-                    if fatalities > 10:
-                        st.error("High Impact Incident Expected")
-                    elif fatalities > 1:
-                        st.warning("Moderate Impact Incident Expected")
-                    else:
-                        st.success("Low Impact Incident Expected")
-                
-                with col_res2:
-                    st.markdown("### 📊 Historical Context")
-                    # Fetch History
-                    hist_res = requests.get(f"{API_URL}/history", params={"country_id": country})
-                    if hist_res.status_code == 200:
-                        hist_data = hist_res.json()
-                        if "years" in hist_data and hist_data["years"]:
-                             chart_df = pd.DataFrame({"Year": hist_data["years"], "Incidents": hist_data["counts"]})
-                             st.line_chart(chart_df, x="Year", y="Incidents")
-                             st.caption(f"Total Incidents in Country {country}: {hist_data['total_incidents']}")
-                        else:
-                            msg = hist_data.get("message", "No historical data found for this country.")
-                            st.info(msg)
+                st.session_state.historical_data = {}
+
+            # 5. Fetch Similar Incidents
+            sim_res = requests.get(f"{API_URL}/similar", params={"region": region, "attack_type": attack_type})
+            if sim_res.status_code == 200:
+                sim_data = sim_res.json()
+                st.session_state.similar_incidents = sim_data.get("incidents", [])
+            else:
+                st.session_state.similar_incidents = []
 
         else:
             st.error(f"Error from API: {response.text}")
-            
-        # Similar Incidents Section
-        st.divider()
-        st.subheader(f"🔍 Recent Similar Incidents (Region {region} - {attack_type})")
-        
-        sim_res = requests.get(f"{API_URL}/similar", params={"region": region, "attack_type": attack_type})
-        if sim_res.status_code == 200:
-            sim_data = sim_res.json()
-            incidents = sim_data.get("incidents", [])
-            
-            if incidents:
-                # Map Visualization
-                map_df = pd.DataFrame(incidents)[['latitude', 'longitude']].dropna()
-                st.map(map_df)
-                
-                # Data Table
-                st.markdown("#### Detailed Records")
-                st.dataframe(pd.DataFrame(incidents)[['iyear', 'city', 'nkill', 'summary']])
-            else:
-                st.info("No similar incidents found with geolocation data.")
-        else:
-            st.warning("Could not fetch similar incidents.")
+            st.session_state.show_results = False
 
     except Exception as e:
         st.error(f"An unexpected error occurred: {e}")
+        st.session_state.show_results = False
+
+
+# Render Results (Persistent)
+if st.session_state.show_results:
+    result = st.session_state.prediction_data
+    
+    if result.get("status") == "warning":
+        st.warning(result["message"])
+    else:
+        fatalities = result.get("predicted_fatalities", 0)
+        
+        col_res1, col_res2 = st.columns([1, 2])
+        with col_res1:
+            st.metric(label="Predicted Fatalities", value=f"{fatalities}")
+            if fatalities > 10:
+                st.error("High Impact Incident Expected")
+            elif fatalities > 1:
+                st.warning("Moderate Impact Incident Expected")
+            else:
+                st.success("Low Impact Incident Expected")
+        
+        with col_res2:
+            st.markdown("### 📊 Historical Context")
+            hist_data = st.session_state.historical_data
+            if "years" in hist_data and hist_data["years"]:
+                    chart_df = pd.DataFrame({"Year": hist_data["years"], "Incidents": hist_data["counts"]})
+                    st.line_chart(chart_df, x="Year", y="Incidents")
+                    st.caption(f"Total Incidents in Country: {hist_data.get('total_incidents', 'N/A')}")
+            else:
+                msg = hist_data.get("message", "No historical data found for this country.")
+                st.info(msg)
+
+    # Similar Incidents Section
+    st.divider()
+    incidents = st.session_state.similar_incidents
+    region_val = st.session_state.last_payload.get("region", region)
+    attack_val = st.session_state.last_payload.get("attacktype1_txt", attack_type)
+    
+    st.subheader(f"🔍 Recent Similar Incidents (Region {region_val} - {attack_val})")
+    
+    if incidents:
+        # Map Visualization
+        map_df = pd.DataFrame(incidents)[['latitude', 'longitude']].dropna()
+        st.map(map_df)
+        
+        # --- GenAI Section ---
+        st.markdown("---")
+        st.subheader("🤖 AI Security Analyst")
+        
+        # We use a unique key for the button to avoid state conflicts
+        if st.button("Generate Driver Safety Briefing", key="gen_ai_btn"):
+            with st.spinner("Analyzing historical data..."):
+                # Prepare context from similar incidents
+                summary_context = " ".join([inc.get("summary", "") for inc in incidents[:3]])
+                gen_payload = {
+                    "country": str(st.session_state.last_payload.get("country")),
+                    "year": str(st.session_state.last_payload.get("iyear")),
+                    "attack_type": attack_val,
+                    "summary_text": summary_context
+                }
+                
+                try:
+                    gen_res = requests.post(f"{API_URL}/genai/advisory", json=gen_payload)
+                    if gen_res.status_code == 200:
+                        advisory_data = gen_res.json()
+                        st.info(advisory_data["advisory"])
+                        st.caption(f"Source: {advisory_data['source']}")
+                    else:
+                        st.error("Failed to generate advisory.")
+                except Exception as e:
+                    st.error(f"Error connecting to AI service: {e}")
+        # ---------------------
+
+        # Data Table
+        st.markdown("#### Detailed Records")
+        df_incidents = pd.DataFrame(incidents)[['iyear', 'city', 'nkill', 'summary']]
+        df_incidents['summary'] = df_incidents['summary'].astype(str)
+        st.dataframe(df_incidents)
+    else:
+        st.info("No similar incidents found with geolocation data.")
 
 # Footer info
 st.divider()

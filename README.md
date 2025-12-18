@@ -8,6 +8,7 @@ This project transforms a traditional Data Science analysis into a production-gr
 *   **Interactive Dashboard:**
     *   **Geospatial Visualization:** Dynamic map showing similar historical incidents in the selected region.
     *   **Trend Analytics:** Historical incident charts for the selected country.
+    *   **AI Security Analyst:** 🤖 Generates travel safety briefings using LLMs (Gemini) based on incident history.
     *   **Smart Inputs:** Dropdowns populated dynamically from dataset metadata.
 *   **REST API:** Fully documented endpoints via FastAPI (Swagger UI included).
 *   **Production Ready:** Docker containerization ensures consistent execution on Windows, Mac, and Linux.
