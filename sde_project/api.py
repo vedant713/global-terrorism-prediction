@@ -51,7 +51,17 @@ def load_artifacts():
         if os.path.exists(DATA_PATH):
             print("Loading historical data...")
             cols = ['iyear', 'country', 'country_txt', 'region', 'region_txt', 'latitude', 'longitude', 'attacktype1_txt', 'nkill', 'city', 'summary']
-            dtypes = {
+            # Load efficiently but safely
+            df_data = pd.read_csv(DATA_PATH, encoding='latin1', usecols=cols, low_memory=False)
+            
+            # Fill NAs first
+            df_data['nkill'] = df_data['nkill'].fillna(0)
+            df_data['latitude'] = df_data['latitude'].fillna(0)
+            df_data['longitude'] = df_data['longitude'].fillna(0)
+            df_data.fillna("Unknown", inplace=True) # Fill text cols
+            
+            # Optimize memory usage
+            optimize_types = {
                 'iyear': 'int32',
                 'country': 'int32',
                 'region': 'int32',
@@ -62,8 +72,7 @@ def load_artifacts():
                 'region_txt': 'category',
                 'attacktype1_txt': 'category'
             }
-            df_data = pd.read_csv(DATA_PATH, encoding='latin1', usecols=cols, dtype=dtypes, low_memory=False)
-            df_data.fillna(0, inplace=True)
+            df_data = df_data.astype(optimize_types)
             print("Historical data loaded.")
         else:
             print("Warning: gt.csv not found. History features will be disabled.")
@@ -158,7 +167,7 @@ def get_similar(region: int, attack_type: str):
     # Get top 50 recent ones with valid lat/long
     filtered = filtered[filtered['latitude'] != 0].sort_values(by='iyear', ascending=False).head(50)
     
-    records = filtered[['iyear', 'latitude', 'longitude', 'city', 'nkill', 'summary']].to_dict(orient='records')
+    records = filtered[['iyear', 'latitude', 'longitude', 'city', 'country', 'country_txt', 'nkill', 'summary']].to_dict(orient='records')
     return {"incidents": records}
 
 @app.post("/genai/advisory")

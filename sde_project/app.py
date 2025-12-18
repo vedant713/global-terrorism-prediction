@@ -14,26 +14,16 @@ st.markdown("Predict the potential fatalities of a terrorist incident based on h
 
 with st.expander("ℹ️ How to use this tool?"):
     st.markdown("""
-    1.  **Enter Incident Date:** Select the Year, Month, and Day of the hypothetical incident.
-    2.  **Select Location:** Enter the Country and Region codes (Numeric IDs).
-    3.  **Choose Incident Characteristics:** Select the Type of Attack, Target, and Weapon used.
-    4.  **Click Predict:** The model will estimate the number of fatalities ('nkill').
+    1.  **Choose Capability:** Use the sidebar to switch between **Prediction Dashboard** and **Global Data Explorer**.
+    2.  **Prediction Mode:** Configure details (Date, Country, Tactics) and click **Predict Impact** to estimate potential fatalities.
+    3.  **Explorer Mode:** Select a specific Region and Attack Type to visualize similar historical incidents on the map.
+    4.  **AI Insights:** Use the **Generate Driver Safety Briefing** button to get an AI-powered security assessment.
     
-    *Note: The prediction is based on historical data patterns trained on the Global Terrorism Database.*
+    *Note: Predictions use an XGBoost model trained on the Global Terrorism Database (GTD).*
     """)
 
 # Sidebar for inputs
 with st.sidebar:
-    st.header("Incident Details")
-    
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        year = st.number_input("Year", min_value=1970, max_value=2030, value=2017)
-    with col2:
-        month = st.number_input("Month", min_value=1, max_value=12, value=1)
-    with col3:
-        day = st.number_input("Day", min_value=1, max_value=31, value=1)
-
     # Fetch Metadata for Dropdowns
     @st.cache_data
     def get_metadata():
@@ -49,193 +39,248 @@ with st.sidebar:
     countries = metadata.get("countries", {})
     regions = metadata.get("regions", {})
     
-    # Country Selection
-    if countries:
-        # Sort by name
-        country_names = sorted(countries.values())
-        selected_country_name = st.selectbox("Country", country_names, index=country_names.index("India") if "India" in country_names else 0)
-        # Find ID for selected name
-        country = next((k for k, v in countries.items() if v == selected_country_name), 4)
-        country = int(country)
-    else:
-         country = st.number_input("Country Code (ID)", min_value=1, value=4)
+    # --- Navigation ---
+    mode = st.sidebar.radio("🔎 Choose Capability:", ["Prediction Dashboard", "Global Data Explorer"], index=0)
+    st.sidebar.divider()
 
-    # Region Selection
-    if regions:
-        region_names = sorted(regions.values())
-        selected_region_name = st.selectbox("Region", region_names)
-        region = next((k for k, v in regions.items() if v == selected_region_name), 1)
-        region = int(region)
-    else:
-        region = st.number_input("Region Code (ID)", min_value=1, value=1)
-
-    # Note: In a real app, these would be populated dynamically from the backend/database
-    attack_type = st.selectbox(
-        "Attack Type",
-        ["Bombing/Explosion", "Assassination", "Armed Assault", "Kidnapping", "Hijacking", "Unknown"]
-    )
-    
-    target_type = st.selectbox(
-        "Target Type",
-        ["Private Citizens & Property", "Military", "Police", "Government", "Business", "Unknown"]
-    )
-    
-    weapon_type = st.selectbox(
-        "Weapon Type",
-        ["Explosives", "Firearms", "Incendiary", "Melee", "Chemical", "Unknown"]
-    )
-
-    predict_btn = st.button("Predict Impact", type="primary")
-
-# Initialize Session State
-if "show_results" not in st.session_state:
-    st.session_state.show_results = False
-if "prediction_data" not in st.session_state:
-    st.session_state.prediction_data = {}
-if "similar_incidents" not in st.session_state:
-    st.session_state.similar_incidents = []
-if "historical_data" not in st.session_state:
-    st.session_state.historical_data = {}
-if "last_payload" not in st.session_state:
-    st.session_state.last_payload = {}
-
-
-# Main Logic
-if predict_btn:
-    # 1. Prepare Payload
-    payload = {
-        "iyear": year,
-        "imonth": month,
-        "iday": day,
-        "country": country,
-        "region": region,
-        "attacktype1_txt": attack_type,
-        "targtype1_txt": target_type,
-        "weaptype1_txt": weapon_type
-    }
-    st.session_state.last_payload = payload
-
-    try:
-        # 2. Check API Health
-        try:
-            health_response = requests.get(f"{API_URL}/health")
-            if health_response.status_code != 200:
-                st.error("Backend API is not reachable.")
-        except requests.exceptions.ConnectionError:
-            st.error(f"Failed to connect to Backend API at {API_URL}. Is it running?")
-            st.info("Run: uvicorn sde_project.api:app --reload")
-            st.stop()
-
-        # 3. Get Prediction
-        response = requests.post(f"{API_URL}/predict", json=payload)
+    # --- Mode 1: Prediction Dashboard ---
+    if mode == "Prediction Dashboard":
+        st.sidebar.header("📝 Incident Configuration")
         
-        if response.status_code == 200:
-            st.session_state.prediction_data = response.json()
-            st.session_state.show_results = True
-            
-            # 4. Fetch History
-            hist_res = requests.get(f"{API_URL}/history", params={"country_id": country})
-            if hist_res.status_code == 200:
-                st.session_state.historical_data = hist_res.json()
-            else:
-                st.session_state.historical_data = {}
+        # Date Inputs
+        col_d1, col_d2, col_d3 = st.sidebar.columns(3)
+        year = col_d1.number_input("Year", 2000, 2030, 2017)
+        month = col_d2.number_input("Month", 1, 12, 1)
+        day = col_d3.number_input("Day", 1, 31, 1)
 
-            # 5. Fetch Similar Incidents
-            sim_res = requests.get(f"{API_URL}/similar", params={"region": region, "attack_type": attack_type})
-            if sim_res.status_code == 200:
-                sim_data = sim_res.json()
-                st.session_state.similar_incidents = sim_data.get("incidents", [])
-            else:
-                st.session_state.similar_incidents = []
+        # Location Inputs
+        if countries and regions:
+            country_name = st.sidebar.selectbox("Country", sorted(countries.values()), index=list(sorted(countries.values())).index("India") if "India" in countries.values() else 0)
+            country = next((k for k, v in countries.items() if v == country_name), 4)
 
+            region_name = st.sidebar.selectbox("Region", sorted(regions.values()), index=list(sorted(regions.values())).index("Australasia & Oceania") if "Australasia & Oceania" in regions.values() else 0)
+            region = next((k for k, v in regions.items() if v == region_name), 6)
         else:
-            st.error(f"Error from API: {response.text}")
+            st.sidebar.warning("Metadata not loaded. Using codes.")
+            country = st.sidebar.number_input("Country ID", 4)
+            region = st.sidebar.number_input("Region ID", 6)
+
+        # Attack Details
+        attack_type = st.sidebar.selectbox("Attack Type", 
+            ["Bombing/Explosion", "Assassination", "Armed Assault", "Kidnapping", "Hijacking", "Unknown"]
+        )
+        target_type = st.sidebar.selectbox("Target Type", 
+            ["Private Citizens & Property", "Military", "Police", "Government (General)", "Business", "Unknown"]
+        )
+        weapon_type = st.sidebar.selectbox("Weapon Type", 
+            ["Explosives", "Firearms", "Incendiary", "Melee", "Chemical", "Unknown"]
+        )
+        
+        predict_btn = st.sidebar.button("⚡ Predict Impact", type="primary")
+
+    # --- Mode 2: Data Explorer Sidebar ---
+    elif mode == "Global Data Explorer":
+        st.sidebar.header("🌍 Filters")
+        
+        if regions:
+            # Sidebar Filters strictly for Explorer
+            exp_region = st.sidebar.selectbox("Select Region", sorted(regions.values()), key="exp_reg")
+            exp_reg_id = next((k for k, v in regions.items() if v == exp_region), 1)
+            
+            exp_attack = st.sidebar.selectbox("Attack Type", 
+                 ["Bombing/Explosion", "Assassination", "Armed Assault", "Kidnapping", "Hijacking"],
+                 key="exp_att"
+            )
+            
+            load = st.sidebar.button("Update Map", type="primary")
+        else:
+             st.sidebar.warning("Unable to load regions.")
+             st.sidebar.caption("Backend might be starting via Uvicorn...")
+             if st.sidebar.button("🔄 Retry Connection"):
+                 st.cache_data.clear()
+                 st.rerun()
+
+# Main Area for Prediction
+if mode == "Prediction Dashboard":
+    st.markdown("## 🔮 Prediction Dashboard")
+    
+    # Initialize Session State for Results
+    if "show_results" not in st.session_state:
+        st.session_state.show_results = False
+        
+    if predict_btn:
+        payload = {
+            "iyear": year, "imonth": month, "iday": day,
+            "country": country, "region": region,
+            "attacktype1_txt": attack_type,
+            "targtype1_txt": target_type,
+            "weaptype1_txt": weapon_type
+        }
+        st.session_state.last_payload = payload
+        
+        try:
+             # Check API
+            try:
+                requests.get(f"{API_URL}/health")
+            except:
+                st.error("Backend offline. Run `uvicorn sde_project.api:app --reload`")
+                st.stop()
+
+            # Predict
+            response = requests.post(f"{API_URL}/predict", json=payload)
+            if response.status_code == 200:
+                st.session_state.prediction_data = response.json()
+                st.session_state.show_results = True
+                
+                # Fetch Context
+                hist_res = requests.get(f"{API_URL}/history", params={"country_id": country})
+                st.session_state.historical_data = hist_res.json() if hist_res.status_code == 200 else {}
+
+                sim_res = requests.get(f"{API_URL}/similar", params={"region": region, "attack_type": attack_type})
+                st.session_state.similar_incidents = sim_res.json().get("incidents", []) if sim_res.status_code == 200 else []
+            else:
+                 st.error(response.text)
+                 st.session_state.show_results = False
+                 
+        except Exception as e:
+            st.error(str(e))
             st.session_state.show_results = False
 
-    except Exception as e:
-        st.error(f"An unexpected error occurred: {e}")
-        st.session_state.show_results = False
+    # Display Results
+    if st.session_state.get("show_results"):
+        res = st.session_state.prediction_data
+        
+        # Top Metrics
+        if res.get("status") == "success":
+            fatalities = res.get("predicted_fatalities", 0)
+            
+            # Layout: Metric | Chart
+            c1, c2 = st.columns([1, 2])
+            with c1:
+                st.markdown("### Threat Assessment")
+                st.metric("Expected Fatalities", f"{fatalities}")
+                if fatalities > 10: st.error("CRITICAL THREAT")
+                elif fatalities > 1: st.warning("ELEVATED THREAT")
+                else: st.success("LOW THREAT")
+            
+            with c2:
+                st.markdown("### 🗓️ Historical Trend")
+                hist = st.session_state.get("historical_data", {})
+                if hist.get("years"):
+                    chart_df = pd.DataFrame({"Year": hist["years"], "Attacks": hist["counts"]})
+                    st.line_chart(chart_df, x="Year", y="Attacks")
+                    st.caption(f"Total Incidents in Country: {hist.get('total_incidents', 'N/A')}")
+                else:
+                    st.caption("No history available.")
 
-
-# Render Results (Persistent)
-if st.session_state.show_results:
-    result = st.session_state.prediction_data
-    
-    if result.get("status") == "warning":
-        st.warning(result["message"])
-    else:
-        fatalities = result.get("predicted_fatalities", 0)
-        
-        col_res1, col_res2 = st.columns([1, 2])
-        with col_res1:
-            st.metric(label="Predicted Fatalities", value=f"{fatalities}")
-            if fatalities > 10:
-                st.error("High Impact Incident Expected")
-            elif fatalities > 1:
-                st.warning("Moderate Impact Incident Expected")
-            else:
-                st.success("Low Impact Incident Expected")
-        
-        with col_res2:
-            st.markdown("### 📊 Historical Context")
-            hist_data = st.session_state.historical_data
-            if "years" in hist_data and hist_data["years"]:
-                    chart_df = pd.DataFrame({"Year": hist_data["years"], "Incidents": hist_data["counts"]})
-                    st.line_chart(chart_df, x="Year", y="Incidents")
-                    st.caption(f"Total Incidents in Country: {hist_data.get('total_incidents', 'N/A')}")
-            else:
-                msg = hist_data.get("message", "No historical data found for this country.")
-                st.info(msg)
-
-    # Similar Incidents Section
-    st.divider()
-    incidents = st.session_state.similar_incidents
-    region_val = st.session_state.last_payload.get("region", region)
-    attack_val = st.session_state.last_payload.get("attacktype1_txt", attack_type)
-    
-    st.subheader(f"🔍 Recent Similar Incidents (Region {region_val} - {attack_val})")
-    
-    if incidents:
-        # Map Visualization
-        map_df = pd.DataFrame(incidents)[['latitude', 'longitude']].dropna()
-        st.map(map_df)
-        
-        # --- GenAI Section ---
-        st.markdown("---")
-        st.subheader("🤖 AI Security Analyst")
-        
-        # We use a unique key for the button to avoid state conflicts
-        if st.button("Generate Driver Safety Briefing", key="gen_ai_btn"):
-            with st.spinner("Analyzing historical data..."):
-                # Prepare context from similar incidents
-                summary_context = " ".join([inc.get("summary", "") for inc in incidents[:3]])
-                gen_payload = {
-                    "country": str(st.session_state.last_payload.get("country")),
-                    "year": str(st.session_state.last_payload.get("iyear")),
-                    "attack_type": attack_val,
-                    "summary_text": summary_context
-                }
+            # Similar Incidents Section
+            st.divider()
+            incidents = st.session_state.similar_incidents
+            region_val = st.session_state.last_payload.get("region", region)
+            attack_val = st.session_state.last_payload.get("attacktype1_txt", attack_type)
+            
+            st.subheader(f"🔍 Recent Similar Incidents (Region {region_val} - {attack_val})")
+            
+            if incidents:
+                # Map Visualization
+                map_df = pd.DataFrame(incidents)[['latitude', 'longitude']].dropna()
+                st.map(map_df)
                 
-                try:
-                    gen_res = requests.post(f"{API_URL}/genai/advisory", json=gen_payload)
-                    if gen_res.status_code == 200:
-                        advisory_data = gen_res.json()
-                        st.info(advisory_data["advisory"])
-                        st.caption(f"Source: {advisory_data['source']}")
-                    else:
-                        st.error("Failed to generate advisory.")
-                except Exception as e:
-                    st.error(f"Error connecting to AI service: {e}")
-        # ---------------------
+                # GenAI Section
+                st.markdown("---")
+                st.subheader("💡 AI Security Briefing")
+                if st.button("Generate Driver Safety Advisory", key="gen_ai_dash"):
+                    with st.spinner("Consulting AI Analyst..."):
+                        sims = st.session_state.get("similar_incidents", [])
+                        context = " ".join([i.get("summary", "") for i in sims[:3]])
+                        p = st.session_state.last_payload
+                        
+                        try:
+                            g_res = requests.post(f"{API_URL}/genai/advisory", json={
+                                "country": str(p.get("country")),
+                                "year": str(p.get("iyear")),
+                                "attack_type": p.get("attacktype1_txt"),
+                                "summary_text": context
+                            })
+                            if g_res.status_code == 200:
+                                advisory_data = g_res.json()
+                                st.info(advisory_data["advisory"])
+                                st.caption(f"Source: {advisory_data['source']}")
+                            else:
+                                st.error("AI Service Unavailable")
+                        except Exception as e:
+                            st.error(f"Connection Failed: {e}")
 
-        # Data Table
-        st.markdown("#### Detailed Records")
-        df_incidents = pd.DataFrame(incidents)[['iyear', 'city', 'nkill', 'summary']]
-        df_incidents['summary'] = df_incidents['summary'].astype(str)
-        st.dataframe(df_incidents)
-    else:
-        st.info("No similar incidents found with geolocation data.")
+                # Data Table
+                st.markdown("#### Detailed Records")
+                df_incidents = pd.DataFrame(incidents)[['iyear', 'city', 'nkill', 'summary']]
+                df_incidents['summary'] = df_incidents['summary'].astype(str)
+                st.dataframe(df_incidents)
+            else:
+                st.info("No similar incidents found with geolocation data.")
+        else:
+            st.error(res.get("message", "An unknown error occurred during prediction."))
 
-# Footer info
-st.divider()
-st.caption("Powered by XGBoost & FastAPI | SDE Project Demo")
+
+# --- Mode 2: Data Explorer ---
+elif mode == "Global Data Explorer":
+    # Main Area
+    st.markdown(f"## 🗺️ Intelligence Map: {exp_region if 'exp_region' in locals() else 'Select a Region'}")
+    
+    if "exp_loaded" not in st.session_state:
+        st.session_state.exp_loaded = False
+
+    # Only run if inputs are defined (i.e. regions were loaded)
+    click_load = globals().get('load', False) or locals().get('load', False)
+    if (click_load or st.session_state.get("exp_loaded")) and 'exp_reg_id' in locals():
+        st.session_state.exp_loaded = True
+        
+        try:
+            # Check API Health
+            try:
+                health_response = requests.get(f"{API_URL}/health")
+                if health_response.status_code != 200:
+                    st.error("Backend API is not reachable.")
+                    st.stop()
+            except requests.exceptions.ConnectionError:
+                st.error(f"Failed to connect to Backend API at {API_URL}. Is it running?")
+                st.info("Run: uvicorn sde_project.api:app --reload")
+                st.stop()
+
+            res = requests.get(f"{API_URL}/similar", params={"region": exp_reg_id, "attack_type": exp_attack})
+            if res.status_code == 200:
+                data = res.json().get("incidents", [])
+                
+                if data:
+                    st.success(f"Found {len(data)} incidents for {exp_region} - {exp_attack}.")
+                    
+                    col_map, col_details = st.columns([1, 1])
+                    
+                    with col_map:
+                        st.subheader("📍 Incident Map")
+                        map_df_exp = pd.DataFrame(data)[['latitude', 'longitude']].dropna()
+                        st.map(map_df_exp)
+                        
+                    with col_details:
+                        st.subheader("📄 Report Context")
+                        # Show first incident summary
+                        first_inc = data[0]
+                        st.markdown(f"**Latest Incident ({first_inc['iyear']}):**")
+                        st.info(first_inc.get('summary', 'No summary available.'))
+                        
+                    # Detailed Table
+                    st.markdown("### Full Records")
+                    df_exp = pd.DataFrame(data)[['iyear', 'country_txt', 'city', 'nkill', 'summary']]
+                    df_exp['summary'] = df_exp['summary'].astype(str)
+                    st.dataframe(df_exp.rename(columns={'country_txt': 'Country', 'nkill': 'Fatalities', 'summary': 'Description'}))
+                    
+                else:
+                    st.warning("No incidents found for this selection.")
+            else:
+                st.error(f"API Error: {res.text}")
+        except Exception as e:
+            st.error(f"Data Fetch Error: {e}")
+
+# Footer
+st.sidebar.divider()
+st.sidebar.caption("v1.2.0 | SDE Project")
