@@ -6,7 +6,8 @@ This project transforms a traditional Data Science analysis into a production-gr
 
 *   **Prediction Service:** Real-time fatality estimation using a trained **XGBoost Regressor**.
 *   **Interactive Dashboard:**
-    *   **Geospatial Visualization:** Dynamic map showing similar historical incidents in the selected region.
+    *   **3D Global Incident Sphere:** 🌐 Interactive 3D globe visualization (Plotly) with "Cyberpunk" aesthetics for exploring incident density.
+    *   **Data Explorer Mode:** 🗺️ Dedicated interface for browsing historical incident maps and filtering by region/attack type.
     *   **Trend Analytics:** Historical incident charts for the selected country.
     *   **AI Security Analyst:** 🤖 Generates travel safety briefings using LLMs (Gemini) based on incident history.
     *   **Smart Inputs:** Dropdowns populated dynamically from dataset metadata.

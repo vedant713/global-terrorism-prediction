@@ -51,14 +51,54 @@ def load_artifacts():
         if os.path.exists(DATA_PATH):
             print("Loading historical data...")
             cols = ['iyear', 'country', 'country_txt', 'region', 'region_txt', 'latitude', 'longitude', 'attacktype1_txt', 'nkill', 'city', 'summary']
+            # Load efficiently but safely
             df_data = pd.read_csv(DATA_PATH, encoding='latin1', usecols=cols, low_memory=False)
-            df_data.fillna(0, inplace=True)
-            print("Historical data loaded.")
+            
+            # Fill NAs first
+            df_data['nkill'] = df_data['nkill'].fillna(0)
+            df_data['latitude'] = df_data['latitude'].fillna(0)
+            df_data['longitude'] = df_data['longitude'].fillna(0)
+            df_data.fillna("Unknown", inplace=True) # Fill text cols
+            
+            # Optimize memory usage
+            optimize_types = {
+                'iyear': 'int32',
+                'country': 'int32',
+                'region': 'int32',
+                'nkill': 'float32',
+                'latitude': 'float32',
+                'longitude': 'float32',
+                'country_txt': 'category',
+                'region_txt': 'category',
+                'attacktype1_txt': 'category'
+            }
+            df_data = df_data.astype(optimize_types)
+            
+            # Pre-calculate Country Stats for Globe
+            global country_stats
+            country_stats = df_data.groupby('country_txt').agg({
+                'latitude': 'mean',
+                'longitude': 'mean',
+                'nkill': ['sum', 'count'],
+                'country': 'first'
+            }).reset_index()
+            country_stats.columns = ['country', 'lat', 'lon', 'fatalities', 'incidents', 'country_id']
+            country_stats = country_stats.dropna().to_dict(orient='records')
+            
+            print("Historical data loaded & aggregated.")
         else:
             print("Warning: gt.csv not found. History features will be disabled.")
-            
+            country_stats = []
+
     except Exception as e:
         print(f"Error loading artifacts: {e}")
+
+@app.get("/globe_data")
+def get_globe_data():
+    """Returns aggregated country data for 3D visualization."""
+    if df_data is None:
+         return {"stats": []}
+    return {"stats": country_stats}
 
 @app.get("/health")
 def health_check():
@@ -147,7 +187,7 @@ def get_similar(region: int, attack_type: str):
     # Get top 50 recent ones with valid lat/long
     filtered = filtered[filtered['latitude'] != 0].sort_values(by='iyear', ascending=False).head(50)
     
-    records = filtered[['iyear', 'latitude', 'longitude', 'city', 'nkill', 'summary']].to_dict(orient='records')
+    records = filtered[['iyear', 'latitude', 'longitude', 'city', 'country', 'country_txt', 'nkill', 'summary']].to_dict(orient='records')
     return {"incidents": records}
 
 @app.post("/genai/advisory")
