@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./sde_project
+      dockerfile: Dockerfile
+    container_name: gtd_backend
+    command: uvicorn api:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./gt.csv:/app/gt.csv:ro  # Mount dataset read-only
+      - ./sde_project/models:/app/models # Persist/Mount models if needed
+    labels:
+      - "project=gtd_analysis"
+
+  frontend:
+    build:
+      context: ./sde_project
+      dockerfile: Dockerfile
+    container_name: gtd_frontend
+    command: streamlit run app.py --server.port 8501 --server.address 0.0.0.0
+    ports:
+      - "8501:8501"
+    environment:
+      - API_URL=http://backend:8000
+    depends_on:
+      - backend
+    labels:
+      - "project=gtd_analysis"

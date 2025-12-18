@@ -1,0 +1,65 @@
+# =====================
+# Python / venv
+# =====================
+venv/
+.env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# =====================
+# Conda
+# =====================
+.conda/
+*.conda
+
+# =====================
+# Data & Models (LARGE FILES)
+# =====================
+data/
+datasets/
+*.csv
+*.tsv
+*.json
+*.parquet
+*.hdf5
+*.h5
+*.pkl
+*.pickle
+*.joblib
+*.npy
+*.npz
+
+# =====================
+# ML / DL Models
+# =====================
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.pb
+*.tflite
+
+# =====================
+# Archives
+# =====================
+*.zip
+*.tar
+*.tar.gz
+*.7z
+*.rar
+
+# =====================
+# Logs & Outputs
+# =====================
+logs/
+outputs/
+results/
+*.log
+
+# =====================
+# OS junk
+# =====================
+.DS_Store
+
