@@ -1,6 +1,8 @@
 from fastapi.testclient import TestClient
 from sde_project.api import app
 import pytest
+from unittest.mock import patch
+import os
 
 client = TestClient(app)
 
@@ -92,8 +94,6 @@ def test_similar_incidents(mock_df):
         assert "latitude" in first
         assert "longitude" in first
 
-import os
-from unittest.mock import patch
 
 def test_genai_advisory_mock():
     """Verify GenAI endpoint returns mock response when no key present (or mocked to be missing)."""
