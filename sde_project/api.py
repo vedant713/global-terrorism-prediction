@@ -51,7 +51,18 @@ def load_artifacts():
         if os.path.exists(DATA_PATH):
             print("Loading historical data...")
             cols = ['iyear', 'country', 'country_txt', 'region', 'region_txt', 'latitude', 'longitude', 'attacktype1_txt', 'nkill', 'city', 'summary']
-            df_data = pd.read_csv(DATA_PATH, encoding='latin1', usecols=cols, low_memory=False)
+            dtypes = {
+                'iyear': 'int32',
+                'country': 'int32',
+                'region': 'int32',
+                'nkill': 'float32',
+                'latitude': 'float32',
+                'longitude': 'float32',
+                'country_txt': 'category',
+                'region_txt': 'category',
+                'attacktype1_txt': 'category'
+            }
+            df_data = pd.read_csv(DATA_PATH, encoding='latin1', usecols=cols, dtype=dtypes, low_memory=False)
             df_data.fillna(0, inplace=True)
             print("Historical data loaded.")
         else:
