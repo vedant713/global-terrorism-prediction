@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 import json
 import pandas as pd
+import numpy as np
 import os
 
 # Configuration
@@ -40,7 +41,7 @@ with st.sidebar:
     regions = metadata.get("regions", {})
     
     # --- Navigation ---
-    mode = st.sidebar.radio("🔎 Choose Capability:", ["Prediction Dashboard", "Global Data Explorer"], index=0)
+    mode = st.sidebar.radio("🔎 Choose Capability:", ["Prediction Dashboard", "Global Data Explorer", "3D Globe Transparency"], index=0)
     st.sidebar.divider()
 
     # --- Mode 1: Prediction Dashboard ---
@@ -281,6 +282,85 @@ elif mode == "Global Data Explorer":
         except Exception as e:
             st.error(f"Data Fetch Error: {e}")
 
+# --- Mode 3: 3D Globe Transparency ---
+elif mode == "3D Globe Transparency":
+    st.markdown("## 🌐 Global Incident Sphere")
+    st.caption("Interactive 3D visualization of terrorism intensity by country.")
+
+    # Load Globe Data
+    try:
+        import plotly.graph_objects as go
+        
+        # Fetch Aggregated Data
+        if "globe_data" not in st.session_state:
+            g_res = requests.get(f"{API_URL}/globe_data")
+            if g_res.status_code == 200:
+                st.session_state.globe_data = g_res.json().get("stats", [])
+            else:
+                st.session_state.globe_data = []
+
+        stats = st.session_state.globe_data
+        
+        if stats:
+            # Create Dataframe for Plotly
+            gdf = pd.DataFrame(stats)
+            gdf['text'] = gdf['country'] + "<br>Incidents: " + gdf['incidents'].astype(str) + "<br>Fatalities: " + gdf['fatalities'].astype(str)
+
+            # Create Figure
+            fig = go.Figure(data=go.Scattergeo(
+                lon = gdf['lon'],
+                lat = gdf['lat'],
+                text = gdf['text'],
+                mode = 'markers',
+                marker = dict(
+                    size = np.log(gdf['incidents']) * 3.5, # Slightly larger bubbles
+                    opacity = 0.9,
+                    autocolorscale = False,
+                    symbol = 'circle',
+                    line = dict(width=1, color='rgba(255, 255, 255, 0.5)'), # White border for pop
+                    cmin = 0,
+                    color = gdf['incidents'],
+                    cmax = gdf['incidents'].max(),
+                    colorscale = 'Plasma', # Vibrant Sci-Fi colors
+                    colorbar_title="Incidents"
+                )
+            ))
+
+            fig.update_layout(
+                title = 'Global Terrorism Intensity',
+                geo = dict(
+                    scope='world',
+                    projection_type='orthographic',
+                    showland = True,
+                    landcolor = "rgb(40, 40, 50)", # Lighter "Tech" Grey
+                    showcountries=True, 
+                    countrycolor="rgb(70, 70, 70)",
+                    showocean = True,
+                    oceancolor = "rgb(15, 20, 35)", # Deep Blue-Black
+                    lakecolor = "rgb(15, 20, 35)",
+                    showcoastlines=True,
+                    coastlinecolor="rgb(80, 80, 90)"
+                ),
+                margin=dict(l=0, r=0, t=40, b=0),
+                height=650,
+                paper_bgcolor="rgba(0,0,0,0)",
+                font={"color": "white", "family": "Arial"}
+            )
+            
+            # Render
+            st.plotly_chart(fig, use_container_width=True)
+            
+            st.info("💡 Rotate the globe to explore. Hover over bubbles to see details.")
+            
+        else:
+            st.warning("No data available for globe visualization.")
+            if st.button("Retry Load"):
+                del st.session_state.globe_data
+                st.rerun()
+
+    except Exception as e:
+        st.error(f"Visualization Error: {e}")
+
 # Footer
 st.sidebar.divider()
-st.sidebar.caption("v1.2.0 | SDE Project")
+st.sidebar.caption("v1.3.0 | SDE Project")

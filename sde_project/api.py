@@ -73,12 +73,32 @@ def load_artifacts():
                 'attacktype1_txt': 'category'
             }
             df_data = df_data.astype(optimize_types)
-            print("Historical data loaded.")
+            
+            # Pre-calculate Country Stats for Globe
+            global country_stats
+            country_stats = df_data.groupby('country_txt').agg({
+                'latitude': 'mean',
+                'longitude': 'mean',
+                'nkill': ['sum', 'count'],
+                'country': 'first'
+            }).reset_index()
+            country_stats.columns = ['country', 'lat', 'lon', 'fatalities', 'incidents', 'country_id']
+            country_stats = country_stats.dropna().to_dict(orient='records')
+            
+            print("Historical data loaded & aggregated.")
         else:
             print("Warning: gt.csv not found. History features will be disabled.")
-            
+            country_stats = []
+
     except Exception as e:
         print(f"Error loading artifacts: {e}")
+
+@app.get("/globe_data")
+def get_globe_data():
+    """Returns aggregated country data for 3D visualization."""
+    if df_data is None:
+         return {"stats": []}
+    return {"stats": country_stats}
 
 @app.get("/health")
 def health_check():
